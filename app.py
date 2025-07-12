@@ -1,13 +1,81 @@
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 from textblob import TextBlob
 import emoji
 import pandas as pd
 import math
+from pathlib import Path
 
 # Initialize session state for storing posts
 if 'posts' not in st.session_state:
     st.session_state.posts = []
+    
+    # Load from CSV (works both locally and in deployment)
+    try:
+        # For deployment, we'll package the CSV with the app
+        csv_path = Path(__file__).parent / "sample_posts.csv"
+        sample_df = pd.read_csv(csv_path, parse_dates=['created_at'])
+        
+        # Convert to list of dictionaries
+        sample_posts = sample_df.to_dict('records')
+        
+        # Ensure datetime format
+        for post in sample_posts:
+            if isinstance(post['created_at'], str):
+                post['created_at'] = datetime.strptime(post['created_at'], '%Y-%m-%d %H:%M:%S')
+                
+        st.session_state.posts = sample_posts
+    
+    except Exception as e:
+        st.warning(f"Couldn't load sample posts: {e}")
+        # Fallback to hardcoded samples     
+    
+    
+        # Pre-load sample posts
+        sample_posts = [
+            {
+                "text": "KGF 2 is paisa vasool! Best action in Indian cinema 🔥",
+                "likes": 21,
+                "comments": 6,
+                "author_content_watched": 123,
+                "author_reviews_posted": 111,
+                "author_public_watchlists": 2,
+                "media_count": 2,
+                "created_at": datetime.now() - timedelta(hours=72)
+            },
+            {
+                "text": "Pathaan was timepass but too much drama 😒",
+                "likes": 9,
+                "comments": 2,
+                "author_content_watched": 234,
+                "author_reviews_posted": 189,
+                "author_public_watchlists": 3,
+                "media_count": 1,
+                "created_at": datetime.now() - timedelta(hours=62)
+            },
+            {
+                "text": "RRR deserves all the international awards 👏👌",
+                "likes": 17,
+                "comments":3,
+                "author_content_watched": 321,
+                "author_reviews_posted": 313,
+                "author_public_watchlists": 5,
+                "media_count": 3,
+                "created_at": datetime.now() - timedelta(hours=12)
+            },
+            {
+                "text": "Just watched Avatar 2 - visuals are mind-blowing but story is weak 🤷‍♂️",
+                "likes": 8,
+                "comments": 1,
+                "author_content_watched": 79,
+                "author_reviews_posted": 77,
+                "author_public_watchlists": 2,
+                "media_count": 0,
+                "created_at": datetime.now() - timedelta(hours=42)
+            }
+        ]
+        
+        st.session_state.posts = sample_posts
 
 # Scoring functions
 def calculate_emoji_sentiment(text):
