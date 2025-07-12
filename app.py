@@ -1,14 +1,15 @@
 import streamlit as st
-from datetime import datetime, timedelta
+from datetime import datetime
 from textblob import TextBlob
 import emoji
 import pandas as pd
+import math
 
 # Initialize session state for storing posts
 if 'posts' not in st.session_state:
     st.session_state.posts = []
 
-# Scoring functions (your existing code)
+# Scoring functions
 def calculate_emoji_sentiment(text):
     """Calculate sentiment from emojis (returns value between -0.5 to +0.5)"""
     emoji_sentiment_map = {
@@ -38,13 +39,6 @@ def check_movie_relevance(text):
         "scene", "ending", "plot", "story", "screenplay"
     ]
     
-    # Hinglish/Hindi movie terms
-    hinglish_terms = [
-        "फिल्म", "मूवी", "सिनेमा", "देखा", "देखो", "रिव्यू",
-        "एक्टर", "एक्ट्रेस", "डायरेक्टर", "कहानी", "अंत",
-        "प्लॉट", "सीन", "मस्त", "बेहतरीन", "घटिया", "बकवास",
-        "पैसा वसूल", "टाइमपास", "सुपरहिट", "फ्लॉप"
-    ]
     
     # Common Hinglish phrases about movies
     hinglish_phrases = [
@@ -58,7 +52,6 @@ def check_movie_relevance(text):
     # Check for exact matches
     term_matches = (
         sum(1 for term in english_terms if term in text_lower) +
-        sum(1 for term in hinglish_terms if term in text_lower) +
         sum(1 for phrase in hinglish_phrases if phrase in text_lower)
     )
     
@@ -69,50 +62,58 @@ def calculate_post_score(post):
     """
     Calculate a score (0-100) for ranking posts.
     """
+    # Dynamic normalization values (should come from config)
+    LIKE_NORM = 250
+    COMMENT_NORM = 30
+    MEDIA_NORM = 4
+    
     # (1) Engagement Score (50% weight)
     engagement = (
-        0.6 * min(post["likes"] / 100, 1.0) + 
-        0.4 * min(post["comments"] / 50, 1.0)
+        0.6 * min(post["likes"] / LIKE_NORM, 1.0) + 
+        0.4 * min(post["comments"] / COMMENT_NORM, 1.0)
     )
 
     # (2) Content Quality (30% weight)
     ## Enhanced Sentiment Analysis (TextBlob + Emoji)
+    length_bonus = min(len(post["text"])/10, 1.0)
     sentiment = TextBlob(post["text"]).sentiment.polarity  # -1 to 1
     emoji_score = calculate_emoji_sentiment(post["text"])
     combined_sentiment = (sentiment + emoji_score + 1) / 2  # Convert to 0-1 scale
+    combined_sentiment = 0.7*combined_sentiment + 0.3*length_bonus
 
     ## Enhanced Hinglish Movie Relevance
     movie_mentioned_score = check_movie_relevance(post["text"])
 
     ## Media Boost (Images/Videos)
-    media_boost = min(post["media_count"] / 4, 1.0)
+    media_boost = min(post["media_count"] / MEDIA_NORM, 1.0)
 
     content = (
-        0.5 * combined_sentiment +
-        0.3 * movie_mentioned_score +
+        0.7 * combined_sentiment +
+        0.1 * movie_mentioned_score +
         0.2 * media_boost
     )
 
     # (3) Author Reputation (10% weight)
     author = (
-        0.4 * min(post["author_content_watched"] / 10000, 1.0) +  
-        0.3 * min(post["author_reviews_posted"] / 1000, 1.0) +
-        0.3 * min(post["author_public_watchlists"] / 1000, 1.0)
+        0.4 * min(post["author_content_watched"] / 100, 1.0) +  
+        0.3 * min(post["author_reviews_posted"] / 100, 1.0) +
+        0.3 * min(post["author_public_watchlists"] / 5, 1.0)
     )
 
-    # (4) Time Decay (10% weight)
+    # (4) Time Decay
+    decay_factor = 1 + math.log(1 + post["likes"]/100)
     hours_old = (datetime.now() - post["created_at"]).total_seconds() / 3600
-    decay = 0.5 ** (hours_old / 48)  # Halflife = 2 days
+    decay = 0.5 ** (hours_old / (48 * decay_factor))  # Halflife = 2 days
 
     # Final Weighted Score (0-100)
-    raw_score = (0.5 * engagement + 0.3 * content + 0.1 * author) * 100
+    raw_score = (0.6 * engagement + 0.3 * content + 0.1 * author) * 100
     final_score = decay * raw_score
 
     return round(final_score, 1)
 
 # Streamlit UI
 st.title("🎬 Movie Post Ranking Demo")
-st.markdown("Create and rank movie discussion posts with Hinglish support")
+st.markdown("Create and rank movie discussion posts with Mocktale.")
 
 # Sidebar for new post creation
 with st.sidebar:
@@ -201,8 +202,8 @@ with tab2:
         with st.expander("How scoring works"):
             st.markdown("""
             **Post Score Formula**:
-            - Engagement (50%): Likes (60%) + Comments (40%)
-            - Content Quality (30%): Sentiment (50%) + Movie Relevance (30%) + Media (20%)
+            - Engagement (60%): Likes (60%) + Comments (40%)
+            - Content Quality (30%): 70% consists of this (Sentiment (70%) + Movie Relevance (10%) + Media (20%)) and 30% of posts length
             - Author Reputation (10%): Watched (40%) + Reviews (30%) + Watchlists (30%)
             - Time Decay: Score reduces by half every 48 hours
             """)
