@@ -77,6 +77,79 @@ if 'posts' not in st.session_state:
         
         st.session_state.posts = sample_posts
 
+# Add sorting controls at the top
+st.sidebar.header("Sort & Filter")
+sort_option = st.sidebar.radio(
+    "Sort posts by:",
+    ["Hot (Score)", "Newest", "Oldest", "Most Liked", "Most Comments"],
+    index=0  # Default to "Hot"
+)
+
+# Add filtering options
+filter_option = st.sidebar.multiselect(
+    "Filter by:",
+    ["With Media", "High Engagement", "Recent (24h)"],
+    default=[]
+)
+
+# Main display function
+def display_posts(posts_to_show):
+    for i, post in enumerate(posts_to_show):
+        with st.expander(f"Post {i+1} | 👍 {post['likes']} | 💬 {post['comments']} | 🏆 {calculate_post_score(post):.1f}"):
+            st.write(post["text"])
+            
+            # Show metadata
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.caption(f"📅 {post['created_at'].strftime('%b %d, %H:%M')}")
+            with col2:
+                st.caption(f"🎬 {post['author_content_watched']} watched")
+            with col3:
+                st.caption(f"🖼️ {post['media_count']} media")
+            
+            # Engagement buttons
+            like_col, comment_col, _ = st.columns([1, 1, 3])
+            with like_col:
+                if st.button("👍 Like", key=f"like_{i}"):
+                    post["likes"] += 1
+                    st.rerun()
+            with comment_col:
+                if st.button("💬 Comment", key=f"comment_{i}"):
+                    post["comments"] += 1
+                    st.rerun()
+            
+            # Visual score indicator
+            score = calculate_post_score(post)
+            st.progress(score/100)
+            st.caption(f"Post Score: {score:.1f}")
+            
+            
+# Process sorting
+def sort_posts(posts, option):
+    if option == "Hot (Score)":
+        return sorted(posts, key=lambda x: calculate_post_score(x), reverse=True)
+    elif option == "Newest":
+        return sorted(posts, key=lambda x: x["created_at"], reverse=True)
+    elif option == "Oldest":
+        return sorted(posts, key=lambda x: x["created_at"])
+    elif option == "Most Liked":
+        return sorted(posts, key=lambda x: x["likes"], reverse=True)
+    elif option == "Most Comments":
+        return sorted(posts, key=lambda x: x["comments"], reverse=True)
+    return posts            
+
+# Process filters
+def filter_posts(posts, filters):
+    filtered = posts.copy()
+    if "With Media" in filters:
+        filtered = [p for p in filtered if p["media_count"] > 0]
+    if "High Engagement" in filters:
+        filtered = [p for p in filtered if p["likes"] > 100 or p["comments"] > 5]
+    if "Recent (24h)" in filters:
+        cutoff = datetime.now() - timedelta(hours=24)
+        filtered = [p for p in filtered if p["created_at"] > cutoff]
+    return filtered
+
 # Scoring functions
 def calculate_emoji_sentiment(text):
     """Calculate sentiment from emojis (returns value between -0.5 to +0.5)"""
@@ -181,7 +254,23 @@ def calculate_post_score(post):
 
 # Streamlit UI
 st.title("🎬 Movie Post Ranking Demo")
-st.markdown("Create and rank movie discussion posts with Mocktale.")
+#st.markdown("Create and rank movie discussion posts with Mocktale.")
+st.markdown(f"Showing **{len(st.session_state.posts)}** posts | Sorted by: **{sort_option}**")
+
+# Apply filters and sorting
+filtered_posts = filter_posts(st.session_state.posts, filter_option)
+sorted_posts = sort_posts(filtered_posts, sort_option)
+
+# Display the posts
+display_posts(sorted_posts)
+
+# Show stats in sidebar
+st.sidebar.markdown("---")
+st.sidebar.markdown("**Current Stats**")
+st.sidebar.metric("Total Posts", len(st.session_state.posts))
+st.sidebar.metric("Filtered Posts", len(filtered_posts))
+avg_score = sum(calculate_post_score(p) for p in st.session_state.posts)/len(st.session_state.posts) if st.session_state.posts else 0
+st.sidebar.metric("Avg. Post Score", f"{avg_score:.1f}")
 
 # Sidebar for new post creation
 with st.sidebar:
@@ -223,21 +312,26 @@ with tab1:
         st.info("No posts yet. Create one in the sidebar!")
     else:
         for i, post in enumerate(st.session_state.posts):
+            # Create a unique identifier for this post
+            post_id = f"post_{i}_{post['created_at'].timestamp()}"
+            
+            # Create expander without key parameter
             with st.expander(f"Post {i+1} (Likes: {post['likes']} | Comments: {post['comments']})"):
                 st.write(post["text"])
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button(f"👍 Like ({post['likes']})", key=f"like_{i}"):
+                    # Use the unique post_id in button keys
+                    if st.button(f"👍 Like ({post['likes']})", key=f"like_{post_id}"):
                         post["likes"] += 1
                         st.rerun()
                 with col2:
-                    if st.button(f"💬 Comment ({post['comments']})", key=f"comment_{i}"):
+                    if st.button(f"💬 Comment ({post['comments']})", key=f"comment_{post_id}"):
                         post["comments"] += 1
                         st.rerun()
                 
                 # Show score breakdown
                 score = calculate_post_score(post)
-                st.caption(f"Current score: {score}")
+                st.caption(f"Current score: 🏆{score}")
                 st.progress(score/100)
 
 with tab2:
